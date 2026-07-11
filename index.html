@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LuzJusta</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ============ PANTALLA LOGIN ============ -->
+<div id="login-screen" class="login-wrap">
+  <div class="login-box">
+    <div class="login-brand">
+      <div style="font-size:40px;margin-bottom:12px">⚡</div>
+      <h1>Luz<span>Justa</span></h1>
+      <p>Sistema de medición eléctrica compartida</p>
+    </div>
+    <div class="login-card">
+      <div class="form-group">
+        <label>Usuario</label>
+        <input type="text" id="login-user" placeholder="admin" value="admin">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="login-pass" placeholder="••••••••" value="lasflores123">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="loginAdmin()">Ingresar como administrador</button>
+      <div class="divider"><span>o accedé como inquilino</span></div>
+      <button class="btn-tenant" onclick="loginInquilino('nico')"><span>🏠 Casa Nico</span><span style="color:var(--text3)">›</span></button>
+      <button class="btn-tenant" onclick="loginInquilino('muluk')"><span>🏠 Casa Muluk</span><span style="color:var(--text3)">›</span></button>
+      <button class="btn-tenant" onclick="loginInquilino('raul_tina')"><span>🏠 Casa Raúl y Tina</span><span style="color:var(--text3)">›</span></button>
+      <div style="margin-top:16px;padding:10px;background:var(--bg3);border-radius:8px;font-size:11px;color:var(--text3);text-align:center">
+        Demo: admin / lasflores123 · o tocá cualquier casa
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SHELL ADMIN ============ -->
+<div id="app-shell" class="hidden">
+  <nav class="nav">
+    <div class="nav-brand">⚡ <span>LuzJusta</span></div>
+    <div class="nav-right">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="sync-dot" id="admin-sync-dot"></div>
+        <span class="sync-label" id="admin-sync-label">En línea · sync hace 3 min</span>
+      </div>
+      <span class="badge badge-admin">Admin</span>
+      <button class="btn btn-ghost btn-sm" onclick="cerrarSesion()">Salir</button>
+    </div>
+  </nav>
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-section">Principal</div>
+    <div class="sidebar-item active" data-page="dashboard" onclick="irAPagina('dashboard', this)"><span class="icon">📊</span> Dashboard</div>
+    <div class="sidebar-item" data-page="medidores" onclick="irAPagina('medidores', this)"><span class="icon">⚡</span> Medidores</div>
+    <div class="sidebar-item" data-page="historial" onclick="irAPagina('historial', this)"><span class="icon">📋</span> Historial</div>
+    <div class="sidebar-section">Facturación</div>
+    <div class="sidebar-item" data-page="facturas" onclick="irAPagina('facturas', this)"><span class="icon">🧾</span> Facturas</div>
+    <div class="sidebar-item" data-page="planilla" onclick="irAPagina('planilla', this)"><span class="icon">📄</span> Cargar factura</div>
+    <div class="sidebar-section">Sistema</div>
+    <div class="sidebar-item" data-page="config" onclick="irAPagina('config', this)"><span class="icon">⚙</span> Configuración</div>
+  </div>
+
+  <div class="main">
+
+    <!-- PÁGINA: DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">Resumen general del sistema</div>
+
+      <div class="grid-4" style="margin-bottom:24px">
+        <div class="stat-card accent">
+          <div class="stat-label">Consumo desde última factura</div>
+          <div class="stat-value" id="stat-consumo">—</div>
+          <div class="stat-sub" id="stat-consumo-sub">Calculando...</div>
+        </div>
+        <div class="stat-card warn">
+          <div class="stat-label">Última factura</div>
+          <div class="stat-value" id="stat-factura">—</div>
+          <div class="stat-sub" id="stat-factura-sub">Sin registrar</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Potencia ahora</div>
+          <div class="stat-value" id="stat-potencia">—</div>
+          <div class="stat-sub">Suma 4 casas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Próxima medición</div>
+          <div class="stat-value">~8 jun</div>
+          <div class="stat-sub">Est. según historial</div>
+        </div>
+      </div>
+
+      <div class="section-head"><h2>Consumo por casa — período actual</h2></div>
+      <div class="grid-4" style="margin-bottom:24px" id="meters-grid"></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="section-head"><h3>Consumo diario — últimos 30 días</h3></div>
+          <div class="chart-wrap"><canvas id="chart-daily"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="section-head"><h3>Distribución por casa</h3></div>
+          <div class="chart-wrap"><canvas id="chart-donut"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PÁGINA: MEDIDORES -->
+    <div class="page" id="page-medidores">
+      <div class="page-title">Medidores</div>
+      <div class="page-sub">Estado en tiempo real · Peacefair PZIOT-E01</div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head">
+          <h3>Estado del sistema</h3>
+          <button class="btn btn-secondary btn-sm" onclick="sincronizarAhora()">↻ Sincronizar ahora</button>
+        </div>
+        <div class="grid-4">
+          <div style="text-align:center;padding:16px">
+            <div style="font-size:28px;color:var(--accent);font-family:var(--mono);font-weight:700" id="med-online">—</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px">medidores online</div>
+          </div>
+          <div style="text-align:center;padding:16px">
+            <div style="font-size:28px;color:var(--text);font-family:var(--mono);font-weight:700" id="med-watts">—</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px">watts totales ahora</div>
+          </div>
+          <div style="text-align:center;padding:16px">
+            <div style="font-size:28px;color:var(--text);font-family:var(--mono);font-weight:700">220</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px">voltaje promedio</div>
+          </div>
+          <div style="text-align:center;padding:16px">
+            <div style="font-size:28px;color:var(--warn);font-family:var(--mono);font-weight:700" id="med-kwh">—</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px">kWh período actual</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-warn hidden" id="med-alerta"></div>
+
+      <div class="card">
+        <div class="section-head"><h3>Detalle por medidor</h3></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Casa</th><th>Estado</th><th>kWh total medidor</th><th>Potencia actual</th><th>Voltaje</th><th>Corriente</th><th>Última sync</th></tr></thead>
+            <tbody id="medidores-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PÁGINA: HISTORIAL -->
+    <div class="page" id="page-historial">
+      <div class="page-title">Historial de lecturas</div>
+      <div class="page-sub">Lecturas automáticas de los medidores WiFi</div>
+
+      <div class="card">
+        <div class="section-head">
+          <h3>Filtrar</h3>
+          <select id="filter-house" style="width:auto" onchange="renderHistorial()">
+            <option value="">Todas las casas</option>
+            <option value="nico">Casa Nico</option>
+            <option value="muluk">Casa Muluk</option>
+            <option value="raul_tina">Casa Raúl y Tina</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Casa</th><th>Fecha</th><th>Lectura (kWh)</th><th>Consumo período</th><th>Potencia</th><th>Fuente</th></tr></thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PÁGINA: FACTURAS -->
+    <div class="page" id="page-facturas">
+      <div class="page-title">Historial de facturas</div>
+      <div class="page-sub">Facturas de la Cooperativa Las Flores registradas</div>
+      <div id="facturas-list"></div>
+    </div>
+
+    <!-- PÁGINA: CARGAR FACTURA -->
+    <div class="page" id="page-planilla">
+      <div class="page-title">Cargar factura</div>
+      <div class="page-sub">Subí la factura de la Cooperativa y la app genera la planilla automáticamente</div>
+
+      <!-- PASO 1: Subir factura -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-head"><h3>📄 Subir factura (foto o PDF)</h3></div>
+        <div class="upload-zone" id="factura-upload-zone">
+          <input type="file" id="factura-archivo" accept="image/*,.pdf" capture="environment">
+          <div class="upload-placeholder" id="factura-placeholder">
+            <span style="font-size:32px">📷</span>
+            <span style="font-size:13px;color:var(--text2)">Tocá para sacar foto o subir archivo</span>
+            <span style="font-size:11px;color:var(--text3)">JPG, PNG o PDF</span>
+          </div>
+          <img id="factura-preview" class="hidden" style="width:100%;max-height:240px;object-fit:contain;display:block" alt="Preview factura">
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary" id="btn-leer-factura" onclick="leerFacturaConIA()">🤖 Leer con IA</button>
+          <button class="btn btn-ghost" onclick="limpiarFactura()">🗑 Limpiar</button>
+        </div>
+        <div id="factura-ia-status" class="hidden" style="margin-top:12px;font-size:13px;color:var(--accent)"></div>
+      </div>
+
+      <!-- PASO 2: Datos extraídos (editables) -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-head"><h3>Datos de la factura</h3><span style="font-size:11px;color:var(--text3)">✏ Podés editar si algo está mal</span></div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0">
+            <label>Fecha desde</label>
+            <input type="date" id="plan-desde">
+          </div>
+          <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0">
+            <label>Fecha hasta</label>
+            <input type="date" id="plan-hasta">
+          </div>
+          <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0">
+            <label>Consumo total (kWh)</label>
+            <input type="number" id="plan-kwh" placeholder="943" style="font-family:var(--mono)">
+          </div>
+          <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0">
+            <label>Total a pagar ($)</label>
+            <input type="number" id="plan-total" placeholder="349605" style="font-family:var(--mono);color:var(--warn)">
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3)">
+          * Usá el monto de "Total a pagar" de la factura actual. No incluyas deuda de períodos anteriores.
+        </div>
+        <div style="margin-top:14px">
+          <button class="btn btn-primary" onclick="generarPlanillaDesdeFactura()">Generar planilla</button>
+        </div>
+      </div>
+
+      <!-- PASO 3: Planilla generada -->
+      <div id="planilla-result" class="hidden">
+        <div class="card" id="planilla-imprimible">
+          <div class="section-head">
+            <h3>Planilla de distribución</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" onclick="copiarPlanilla()">📋 Copiar</button>
+              <button class="btn btn-ghost btn-sm" onclick="imprimirPlanilla()">🖨 Imprimir</button>
+              <button class="btn btn-secondary btn-sm" onclick="compartirPlanilla()">📤 WhatsApp</button>
+              <button class="btn btn-primary btn-sm" onclick="guardarFacturaActual()">💾 Guardar factura</button>
+            </div>
+          </div>
+          <div class="planilla-total"><span>Total factura Cooperativa</span><strong id="plan-total-disp">$—</strong></div>
+          <div style="margin-bottom:12px;font-size:12px;color:var(--text2)" id="plan-periodo-disp"></div>
+          <table class="data-table">
+            <thead><tr><th>Casa</th><th>Consumo</th><th>% del total</th><th>A pagar</th></tr></thead>
+            <tbody id="planilla-tbody"></tbody>
+          </table>
+          <div style="margin-top:12px;font-size:11px;color:var(--text3)">* Los montos se distribuyen en proporción al consumo real medido de cada vivienda.</div>
+          <div style="margin-top:4px;font-size:11px;color:var(--text3)" id="planilla-fecha-gen"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PÁGINA: CONFIGURACIÓN -->
+    <div class="page" id="page-config">
+      <div class="page-title">Configuración</div>
+      <div class="page-sub">Ajustá los parámetros del sistema</div>
+
+      <div class="tabs">
+        <div class="tab active" onclick="irATab('casas', this)">Casas</div>
+        <div class="tab" onclick="irATab('tuya', this)">Tuya API</div>
+        <div class="tab" onclick="irATab('tarifas', this)">Tarifas</div>
+        <div class="tab" onclick="irATab('admin', this)">Admin</div>
+      </div>
+
+      <div class="tab-content active" id="tab-casas">
+        <div class="card">
+          <div class="section-head"><h3>Nombres de casas</h3></div>
+          <div class="grid-2">
+            <div class="form-group"><label>Fase 1</label><input type="text" id="cfg-nombre-nico" value="Casa Nico"></div>
+            <div class="form-group"><label>Fase 2</label><input type="text" id="cfg-nombre-muluk" value="Casa Muluk"></div>
+            <div class="form-group"><label>Fase 3</label><input type="text" id="cfg-nombre-raul_tina" value="Casa Raúl y Tina"></div>
+          </div>
+          <button class="btn btn-primary" onclick="guardarConfigCasas()">Guardar cambios</button>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-tuya">
+        <div class="card">
+          <div class="alert-success">✓ Conectado a Tuya IoT Platform · South America · 4 dispositivos vinculados</div>
+          <div class="form-group"><label>Access ID</label><input type="text" id="cfg-tuya-id" value="" placeholder="Access ID del proyecto Tuya" style="font-family:var(--mono)"></div>
+          <div class="form-group"><label>Access Secret</label><input type="password" id="cfg-tuya-secret" value="" placeholder="Access Secret"></div>
+          <div class="section-head" style="margin-top:16px"><h3>Device IDs</h3></div>
+          <div class="form-group"><label>Casa Nico</label><input type="text" id="cfg-dev-nico" placeholder="Device ID del medidor" style="font-family:var(--mono);font-size:12px"></div>
+          <div class="form-group"><label>Casa Muluk</label><input type="text" id="cfg-dev-muluk" placeholder="Device ID del medidor" style="font-family:var(--mono);font-size:12px"></div>
+          <div class="form-group"><label>Casa Raúl y Tina</label><input type="text" id="cfg-dev-raul_tina" placeholder="Device ID del medidor" style="font-family:var(--mono);font-size:12px"></div>
+          <button class="btn btn-primary" onclick="guardarConfigTuya()">Guardar</button>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-tarifas">
+        <div class="card">
+          <div class="section-head"><h3>Tarifa T1R · Coop. Las Flores</h3></div>
+          <div class="grid-2">
+            <div class="form-group"><label>Tramo 0–150 kWh ($/kWh)</label><input type="number" id="cfg-t1" value="131043" style="font-family:var(--mono)"></div>
+            <div class="form-group"><label>Tramo 150–300 kWh ($/kWh)</label><input type="number" id="cfg-t2" value="216263" style="font-family:var(--mono)"></div>
+            <div class="form-group"><label>Tramo 300+ kWh ($/kWh)</label><input type="number" id="cfg-t3" value="216263" style="font-family:var(--mono)"></div>
+            <div class="form-group"><label>Cargo fijo ($)</label><input type="number" id="cfg-fijo" value="24448" style="font-family:var(--mono)"></div>
+            <div class="form-group"><label>Alumbrado Público ($)</label><input type="number" id="cfg-alum" value="30288" style="font-family:var(--mono)"></div>
+            <div class="form-group"><label>Servicios Sociales ($)</label><input type="number" id="cfg-ss" value="15900" style="font-family:var(--mono)"></div>
+          </div>
+          <button class="btn btn-primary" onclick="guardarConfigTarifas()">Guardar tarifas</button>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-admin">
+        <div class="card">
+          <div class="form-group"><label>Usuario admin</label><input type="text" id="cfg-admin-user" value="admin"></div>
+          <div class="form-group"><label>Nueva contraseña</label><input type="password" id="cfg-admin-pass" placeholder="Dejar en blanco para no cambiar"></div>
+          <div class="form-group"><label>Intervalo de sincronización</label>
+            <select id="cfg-sync-intervalo"><option>Cada 15 minutos</option><option>Cada 30 minutos</option><option>Cada hora</option></select>
+          </div>
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+            <div class="section-head"><h3>API de lectura por IA</h3></div>
+            <div class="form-group">
+              <label>Anthropic API Key</label>
+              <input type="password" id="cfg-anthropic-key" placeholder="sk-ant-..." style="font-family:var(--mono);font-size:12px">
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">
+              Se guarda en Firebase — funciona desde cualquier dispositivo. Obtenerla en console.anthropic.com
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="guardarConfigAdmin()">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app-shell -->
+
+<!-- ============ SHELL INQUILINO ============ -->
+<div id="tenant-shell" class="hidden">
+  <nav class="nav">
+    <div class="nav-brand">⚡ <span id="tenant-house-name">Mi Casa</span></div>
+    <div class="nav-right">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="sync-dot"></div>
+        <span class="sync-label">En línea</span>
+      </div>
+      <span class="badge badge-tenant">Solo lectura</span>
+      <button class="btn btn-ghost btn-sm" onclick="cerrarSesion()">Salir</button>
+    </div>
+  </nav>
+
+  <div class="main" style="margin-left:0;padding-top:56px">
+    <div style="padding:28px 24px 60px;max-width:680px;margin:0 auto">
+
+      <div class="tenant-hero">
+        <div class="hero-label">Consumo acumulado este período</div>
+        <div class="hero-kwh" id="t-kwh">—</div>
+        <div class="hero-unit">kWh</div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="hs-label">Costo estimado</div>
+            <div class="hs-value cost" id="t-cost">$—</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hs-label">Ahora mismo</div>
+            <div class="hs-value" id="t-watt">— W</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hs-label">Voltaje</div>
+            <div class="hs-value" id="t-voltage">— V</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head"><h3>Última lectura</h3></div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.07em">Lectura anterior</div><div style="font-family:var(--mono);font-size:16px" id="t-prev">—</div></div>
+          <div style="color:var(--text3);font-size:22px">→</div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.07em">Lectura actual</div><div style="font-family:var(--mono);font-size:16px" id="t-curr">—</div></div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.07em">Fecha</div><div style="font-size:14px;color:var(--text2)" id="t-fecha">—</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head"><h3>Mis cobros</h3></div>
+        <div id="t-cobros"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head"><h3>Historial de consumo</h3></div>
+        <div class="chart-wrap"><canvas id="chart-tenant"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head"><h3>Lecturas detalladas</h3></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Fecha</th><th>Lectura (kWh)</th><th>Consumo</th><th>Costo est.</th></tr></thead>
+            <tbody id="t-history"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- NOTIFICACIÓN TOAST -->
+<div class="notif" id="notif"></div>
+
+<!-- ============ SCRIPTS (orden importa) ============ -->
+<script src="firebase/firebase.js"></script>
+<script src="js/state.js"></script>
+<script src="js/utils.js"></script>
+<script src="services/firestore.service.js"></script>
+<script src="services/casas.service.js"></script>
+<script src="services/lecturas.service.js"></script>
+<script src="services/facturas.service.js"></script>
+<script src="services/medidores.service.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/router.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
