@@ -1,8 +1,15 @@
+[build]
+  publish = "."
+
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[build.environment]
+  NODE_VERSION = "18"
 
 [[headers]]
-  for = "/netlify/functions/*"
+  for = "/.netlify/functions/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "Content-Type"
