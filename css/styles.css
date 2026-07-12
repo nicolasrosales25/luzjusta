@@ -175,12 +175,6 @@ select option{background:var(--bg2)}
 .cobro-detail{font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:8px}
 .cobro-monto{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--warn)}
 /* RESPONSIVE */
-@media(max-width:700px){
-  .sidebar{transform:translateX(-100%);transition:transform .3s}.sidebar.open{transform:translateX(0)}
-  .main{margin-left:0}.grid-4{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr 1fr}
-  .hero-kwh{font-size:44px}
-}
-
 /* ===== CASA RAÚL Y TINA ===== */
 .mc-raul_tina::before { background: linear-gradient(90deg, #818cf8, #6366f1); }
 .pill-raul_tina { background: rgba(99, 102, 241, .15); color: #a5b4fc; }
@@ -220,4 +214,73 @@ select option{background:var(--bg2)}
   .planilla-total span, .planilla-total strong { color: black !important; }
   .pct-bar { background: #eee !important; }
   .pill { color: black !important; border: 1px solid #999 !important; background: #f0f0f0 !important; }
+}
+
+/* ===== MENÚ MOBILE ===== */
+.hamburger {
+  display: none; background: none; border: none; color: var(--accent);
+  font-size: 22px; cursor: pointer; padding: 4px 8px; margin-right: 6px;
+  border-radius: 6px; transition: background .18s; line-height: 1;
+}
+.hamburger:hover { background: var(--surface); }
+
+.sidebar-overlay {
+  display: none; position: fixed; inset: 0; top: 56px;
+  background: rgba(8, 10, 20, 0.7); z-index: 99;
+  backdrop-filter: blur(2px);
+}
+
+@media (max-width: 700px) {
+  .hamburger { display: block; }
+
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    z-index: 150;
+    width: 260px;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-overlay.open { display: block; }
+
+  .main { margin-left: 0 !important; }
+
+  /* Nav compacto en mobile */
+  .nav { padding: 0 12px; }
+  .sync-label { display: none; }
+  .badge-admin { display: none; }
+
+  /* Cards más compactos */
+  .stat-value { font-size: 18px; }
+  .meter-kwh { font-size: 24px; }
+  .meter-stats { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .ms-value { font-size: 11px; }
+
+  /* Formularios */
+  .form-group { margin-bottom: 10px; }
+  input, select { font-size: 16px; } /* evita zoom en iOS */
+
+  /* Planilla acciones */
+  .section-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+  /* Hero inquilino */
+  .hero-kwh { font-size: 44px; }
+  .hero-stats { gap: 8px; }
+  .hero-stat { padding: 10px 14px; }
+  .hs-value { font-size: 16px; }
+
+  /* Tabs */
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab { padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+
+  /* Botones en una línea que scrollea */
+  .meter-actions { flex-wrap: wrap; }
+}
+
+@media (max-width: 420px) {
+  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .page { padding: 16px 12px 60px; }
+  .page-title { font-size: 18px; }
+  .hero-kwh { font-size: 38px; }
+  .card { padding: 14px; }
 }

@@ -179,7 +179,7 @@ async function leerFacturaConIA() {
       },
       body: JSON.stringify({
         apiKey: apiKey,
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 800,
         system: [
           'Sos un lector experto de facturas de electricidad de cooperativas argentinas.',

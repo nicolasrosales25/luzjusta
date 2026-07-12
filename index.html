@@ -42,7 +42,10 @@
 <!-- ============ SHELL ADMIN ============ -->
 <div id="app-shell" class="hidden">
   <nav class="nav">
-    <div class="nav-brand">⚡ <span>LuzJusta</span></div>
+    <div class="nav-brand">
+      <button class="hamburger" id="btn-menu" onclick="toggleMenu()">☰</button>
+      ⚡ <span>LuzJusta</span>
+    </div>
     <div class="nav-right">
       <div style="display:flex;align-items:center;gap:6px">
         <div class="sync-dot" id="admin-sync-dot"></div>
@@ -64,6 +67,7 @@
     <div class="sidebar-section">Sistema</div>
     <div class="sidebar-item" data-page="config" onclick="irAPagina('config', this)"><span class="icon">⚙</span> Configuración</div>
   </div>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="cerrarMenu()"></div>
 
   <div class="main">
 
