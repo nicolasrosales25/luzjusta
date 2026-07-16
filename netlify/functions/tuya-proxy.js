@@ -107,15 +107,15 @@ async function getDeviceLogs(clientId, clientSecret, token, deviceId) {
   };
 }
 
-/** Parsea los logs del Peacefair a valores útiles */
+/** Parsea los datos del Peacefair PZIOT-E01
+ *  Códigos reales: voltage(÷10), current(÷100), power(÷100),
+ *  energy(÷100), energy_now(÷100), factor(÷100), frequency(÷10) */
 function parseDeviceLogs(logsResult) {
   var datos = {
     kwhTotal: 0,
     watt: 0,
     voltage: 0,
     corriente: 0,
-    frecuencia: 0,
-    factorPotencia: 0,
   };
 
   if (!logsResult.success || !logsResult.result || !logsResult.result.logs) {
@@ -124,28 +124,22 @@ function parseDeviceLogs(logsResult) {
 
   var logs = logsResult.result.logs;
 
-  // Tomar el valor más reciente de cada DP
   logs.forEach(function(log) {
-    var val = log.value || '';
-    // Eliminar unidades del valor (ej: "0.65kWh" → 0.65)
-    var num = parseFloat(val.replace(/[^0-9.\-]/g, ''));
-    if (isNaN(num)) return;
-
     var code = (log.code || '').toLowerCase();
-    if (code === 'total energy' || code === 'total_energy' || code === 'add_ele') {
-      if (!datos._gotKwh) { datos.kwhTotal = num; datos._gotKwh = true; }
-    } else if (code === 'active energy' || code === 'active_energy') {
-      if (!datos._gotKwh) { datos.kwhTotal = num; datos._gotKwh = true; }
+    var val = parseFloat(log.value);
+    if (isNaN(val)) return;
+
+    if (code === 'energy' || code === 'add_ele') {
+      datos.kwhTotal = val / 100;
+    } else if (code === 'energy_now') {
+      // Energía del período actual — usar si no hay energy total
+      if (!datos.kwhTotal) datos.kwhTotal = val / 100;
     } else if (code === 'power' || code === 'cur_power') {
-      if (!datos._gotWatt) { datos.watt = num; datos._gotWatt = true; }
+      datos.watt = val / 100;
     } else if (code === 'voltage' || code === 'cur_voltage') {
-      if (!datos._gotVolt) { datos.voltage = num; datos._gotVolt = true; }
+      datos.voltage = val / 10;
     } else if (code === 'current' || code === 'cur_current') {
-      if (!datos._gotAmp) { datos.corriente = num; datos._gotAmp = true; }
-    } else if (code === 'frequency') {
-      datos.frecuencia = num;
-    } else if (code === 'power factor' || code === 'power_factor') {
-      datos.factorPotencia = num;
+      datos.corriente = val / 100;
     }
   });
 
