@@ -2,8 +2,9 @@ const https = require('https');
 const crypto = require('crypto');
 
 // =====================================================
-// LuzJusta — Proxy Tuya IoT API v2.0
-// Prueba múltiples endpoints para máxima compatibilidad
+// LuzJusta — Proxy Tuya IoT API
+// Usa Device Logs API para leer Peacefair PZIOT-E01
+// (el endpoint status no funciona con este dispositivo)
 // =====================================================
 
 const TUYA_HOST = 'openapi.tuyaus.com';
@@ -25,14 +26,23 @@ function buildSign(clientId, secret, t, accessToken, method, path, body) {
   return hmacSha256(str, secret);
 }
 
-function tuyaRequest(options) {
+function tuyaGet(host, path, clientId, secret, t, token) {
+  var sign = buildSign(clientId, secret, t, token, 'GET', path, '');
+  var headers = {
+    'client_id': clientId,
+    't': t,
+    'sign': sign,
+    'sign_method': 'HMAC-SHA256',
+  };
+  if (token) headers['access_token'] = token;
+
   return new Promise(function(resolve, reject) {
-    var req = https.request(options, function(res) {
+    var req = https.request({ hostname: host, path: path, method: 'GET', headers: headers }, function(res) {
       var data = '';
       res.on('data', function(chunk) { data += chunk; });
       res.on('end', function() {
         try { resolve(JSON.parse(data)); }
-        catch(e) { reject(new Error('No JSON: ' + data.substring(0, 200))); }
+        catch(e) { reject(new Error('No JSON: ' + data.substring(0, 300))); }
       });
     });
     req.on('error', reject);
@@ -42,86 +52,65 @@ function tuyaRequest(options) {
 
 async function getToken(clientId, clientSecret) {
   var t = Date.now().toString();
-  var path = '/v1.0/token?grant_type=1';
-  var sign = buildSign(clientId, clientSecret, t, '', 'GET', path, '');
-
-  var result = await tuyaRequest({
-    hostname: TUYA_HOST, path: path, method: 'GET',
-    headers: { 'client_id': clientId, 't': t, 'sign': sign, 'sign_method': 'HMAC-SHA256' },
-  });
-
+  var result = await tuyaGet(TUYA_HOST, '/v1.0/token?grant_type=1', clientId, clientSecret, t, '');
   if (!result.success) throw new Error('Auth: ' + (result.msg || JSON.stringify(result)));
   return result.result.access_token;
 }
 
-/** Intenta leer el estado del dispositivo con múltiples endpoints */
-async function getDeviceStatus(clientId, clientSecret, token, deviceId) {
-  // Endpoints a probar en orden
-  var endpoints = [
-    '/v1.0/iot-03/devices/' + deviceId + '/status',
-    '/v1.0/devices/' + deviceId + '/status',
-    '/v2.0/cloud/thing/' + deviceId + '/shadow/properties',
-  ];
+/** Lee los logs recientes del dispositivo (últimos 30 min) */
+async function getDeviceLogs(clientId, clientSecret, token, deviceId) {
+  var t = Date.now().toString();
+  var endTime = Date.now();
+  var startTime = endTime - (30 * 60 * 1000); // 30 minutos atrás
+  var path = '/v1.0/devices/' + deviceId + '/logs?type=7&start_time=' + startTime + '&end_time=' + endTime + '&size=20';
 
-  var lastError = null;
-
-  for (var i = 0; i < endpoints.length; i++) {
-    var path = endpoints[i];
-    var t = Date.now().toString();
-    var sign = buildSign(clientId, clientSecret, t, token, 'GET', path, '');
-
-    try {
-      var result = await tuyaRequest({
-        hostname: TUYA_HOST, path: path, method: 'GET',
-        headers: {
-          'client_id': clientId, 'access_token': token,
-          't': t, 'sign': sign, 'sign_method': 'HMAC-SHA256',
-        },
-      });
-
-      if (result.success && result.result) {
-        return { success: true, result: result.result, endpoint: path };
-      }
-
-      lastError = result.msg || 'sin datos';
-    } catch(e) {
-      lastError = e.message;
-    }
-  }
-
-  // Ningún endpoint funcionó — intentar obtener info del dispositivo para debug
-  var debugPath = '/v1.0/devices/' + deviceId;
-  var debugT = Date.now().toString();
-  var debugSign = buildSign(clientId, clientSecret, debugT, token, 'GET', debugPath, '');
-  var debugInfo = null;
-
-  try {
-    debugInfo = await tuyaRequest({
-      hostname: TUYA_HOST, path: debugPath, method: 'GET',
-      headers: {
-        'client_id': clientId, 'access_token': token,
-        't': debugT, 'sign': debugSign, 'sign_method': 'HMAC-SHA256',
-      },
-    });
-  } catch(e) {}
-
-  return { success: false, msg: lastError, debug: debugInfo };
+  var result = await tuyaGet(TUYA_HOST, path, clientId, clientSecret, t, token);
+  return result;
 }
 
-/** Parsea los data points del medidor */
-function parseDPs(result, endpoint) {
-  var dps = {};
+/** Parsea los logs del Peacefair a valores útiles */
+function parseDeviceLogs(logsResult) {
+  var datos = {
+    kwhTotal: 0,
+    watt: 0,
+    voltage: 0,
+    corriente: 0,
+    frecuencia: 0,
+    factorPotencia: 0,
+  };
 
-  // El formato varía según el endpoint
-  if (Array.isArray(result)) {
-    // v1.0 status retorna array de {code, value}
-    result.forEach(function(dp) { dps[dp.code] = dp.value; });
-  } else if (result.properties) {
-    // v2.0 shadow retorna {properties: [{code, value}]}
-    result.properties.forEach(function(dp) { dps[dp.code] = dp.value; });
+  if (!logsResult.success || !logsResult.result || !logsResult.result.logs) {
+    return datos;
   }
 
-  return dps;
+  var logs = logsResult.result.logs;
+
+  // Tomar el valor más reciente de cada DP
+  logs.forEach(function(log) {
+    var val = log.value || '';
+    // Eliminar unidades del valor (ej: "0.65kWh" → 0.65)
+    var num = parseFloat(val.replace(/[^0-9.\-]/g, ''));
+    if (isNaN(num)) return;
+
+    var code = (log.code || '').toLowerCase();
+    if (code === 'total energy' || code === 'total_energy' || code === 'add_ele') {
+      if (!datos._gotKwh) { datos.kwhTotal = num; datos._gotKwh = true; }
+    } else if (code === 'active energy' || code === 'active_energy') {
+      if (!datos._gotKwh) { datos.kwhTotal = num; datos._gotKwh = true; }
+    } else if (code === 'power' || code === 'cur_power') {
+      if (!datos._gotWatt) { datos.watt = num; datos._gotWatt = true; }
+    } else if (code === 'voltage' || code === 'cur_voltage') {
+      if (!datos._gotVolt) { datos.voltage = num; datos._gotVolt = true; }
+    } else if (code === 'current' || code === 'cur_current') {
+      if (!datos._gotAmp) { datos.corriente = num; datos._gotAmp = true; }
+    } else if (code === 'frequency') {
+      datos.frecuencia = num;
+    } else if (code === 'power factor' || code === 'power_factor') {
+      datos.factorPotencia = num;
+    }
+  });
+
+  return datos;
 }
 
 exports.handler = async function(event) {
@@ -153,28 +142,21 @@ exports.handler = async function(event) {
     for (var i = 0; i < deviceIds.length; i++) {
       var item = deviceIds[i];
       try {
-        var estado = await getDeviceStatus(clientId, clientSecret, token, item.deviceId);
+        // Usar Device Logs API en vez de Status API
+        var logsResult = await getDeviceLogs(clientId, clientSecret, token, item.deviceId);
+        var datos = parseDeviceLogs(logsResult);
 
-        if (estado.success) {
-          var dps = parseDPs(estado.result, estado.endpoint);
+        var tieneData = datos.kwhTotal > 0 || datos.watt > 0 || datos.voltage > 0;
 
-          resultados[item.casaId] = {
-            online: true,
-            kwhTotal: (dps['add_ele'] || dps['cur_electricity'] || dps['total_forward_energy'] || 0) / 100,
-            watt: (dps['cur_power'] || dps['phase_a'] && JSON.parse(dps['phase_a']).power || 0) / 10,
-            voltage: (dps['cur_voltage'] || 0) / 10,
-            corriente: (dps['cur_current'] || 0) / 1000,
-            ultimaSync: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }),
-            endpoint: estado.endpoint,
-            raw: dps,
-          };
-        } else {
-          resultados[item.casaId] = {
-            online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
-            ultimaSync: 'Error: ' + (estado.msg || 'sin datos'),
-            debug: estado.debug,
-          };
-        }
+        resultados[item.casaId] = {
+          online: tieneData,
+          kwhTotal: datos.kwhTotal,
+          watt: datos.watt,
+          voltage: datos.voltage,
+          corriente: datos.corriente,
+          ultimaSync: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }),
+          raw: logsResult.result ? logsResult.result.logs : [],
+        };
       } catch(devErr) {
         resultados[item.casaId] = {
           online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
