@@ -104,7 +104,7 @@ async function sincronizarMedidores() {
     S.casas.forEach(function(casa) {
       S.medidores[casa.id] = {
         online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
-        ultimaSync: 'Error: ' + error.message.substring(0, 30),
+        ultimaSync: 'Error: ' + error.message.substring(0, 50),
       };
     });
     return S.medidores;

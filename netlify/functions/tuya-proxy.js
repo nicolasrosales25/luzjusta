@@ -2,27 +2,47 @@ const https = require('https');
 const crypto = require('crypto');
 
 // =====================================================
-// LuzJusta — Proxy Tuya IoT API
-// =====================================================
-// Maneja autenticación HMAC-SHA256 y consulta de dispositivos.
-// El frontend envía clientId, clientSecret y deviceId.
-// Esta función obtiene el token y lee el estado del medidor.
+// LuzJusta — Proxy Tuya IoT API v2.0
+// Firma HMAC-SHA256 completa según documentación Tuya
 // =====================================================
 
-/** Firma HMAC-SHA256 para Tuya API */
-function calcularFirma(str, secret) {
-  return crypto.createHmac('sha256', secret).update(str).digest('hex').toUpperCase();
+const TUYA_HOST = 'openapi.tuyaus.com';
+
+/** SHA256 de un string */
+function sha256(str) {
+  return crypto.createHash('sha256').update(str || '').digest('hex');
 }
 
-/** Hace una request HTTPS y devuelve el JSON */
-function httpsRequest(opciones, body) {
+/** HMAC-SHA256 */
+function hmacSha256(message, secret) {
+  return crypto.createHmac('sha256', secret).update(message).digest('hex').toUpperCase();
+}
+
+/** Construye la firma completa para Tuya API v2.0 */
+function buildSign(clientId, secret, t, accessToken, method, path, body) {
+  // SHA256 del body (vacío para GET)
+  var contentHash = sha256(body || '');
+
+  // String to sign según Tuya v2.0
+  var stringToSign = method + '\n' + contentHash + '\n' + '\n' + path;
+
+  // Concatenar: clientId + [accessToken] + t + stringToSign
+  var str = clientId;
+  if (accessToken) str += accessToken;
+  str += t + stringToSign;
+
+  return hmacSha256(str, secret);
+}
+
+/** Request HTTPS genérico */
+function httpsRequest(options, body) {
   return new Promise(function(resolve, reject) {
-    const req = https.request(opciones, function(res) {
-      let datos = '';
-      res.on('data', function(chunk) { datos += chunk; });
+    var req = https.request(options, function(res) {
+      var data = '';
+      res.on('data', function(chunk) { data += chunk; });
       res.on('end', function() {
-        try { resolve(JSON.parse(datos)); }
-        catch (e) { reject(new Error('Respuesta no es JSON: ' + datos.substring(0, 200))); }
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error('No JSON: ' + data.substring(0, 200))); }
       });
     });
     req.on('error', reject);
@@ -31,15 +51,15 @@ function httpsRequest(opciones, body) {
   });
 }
 
-/** Obtiene un token de acceso de Tuya */
-async function obtenerToken(clientId, clientSecret) {
-  const t = Date.now().toString();
-  const strToSign = clientId + t;
-  const sign = calcularFirma(strToSign, clientSecret);
+/** Obtener token de Tuya */
+async function getToken(clientId, clientSecret) {
+  var t = Date.now().toString();
+  var path = '/v1.0/token?grant_type=1';
+  var sign = buildSign(clientId, clientSecret, t, '', 'GET', path, '');
 
-  const resultado = await httpsRequest({
-    hostname: 'openapi.tuyaus.com',
-    path: '/v1.0/token?grant_type=1',
+  var result = await httpsRequest({
+    hostname: TUYA_HOST,
+    path: path,
     method: 'GET',
     headers: {
       'client_id': clientId,
@@ -49,22 +69,22 @@ async function obtenerToken(clientId, clientSecret) {
     },
   });
 
-  if (!resultado.success) {
-    throw new Error('Error de autenticación Tuya: ' + (resultado.msg || JSON.stringify(resultado)));
+  if (!result.success) {
+    throw new Error('Auth Tuya: ' + (result.msg || JSON.stringify(result)));
   }
 
-  return resultado.result.access_token;
+  return result.result.access_token;
 }
 
-/** Lee el estado de un dispositivo */
-async function leerDispositivo(clientId, clientSecret, token, deviceId) {
-  const t = Date.now().toString();
-  const strToSign = clientId + token + t;
-  const sign = calcularFirma(strToSign, clientSecret);
+/** Leer estado de un dispositivo */
+async function getDeviceStatus(clientId, clientSecret, token, deviceId) {
+  var t = Date.now().toString();
+  var path = '/v1.0/devices/' + deviceId + '/status';
+  var sign = buildSign(clientId, clientSecret, t, token, 'GET', path, '');
 
-  const resultado = await httpsRequest({
-    hostname: 'openapi.tuyaus.com',
-    path: '/v1.0/devices/' + deviceId + '/status',
+  var result = await httpsRequest({
+    hostname: TUYA_HOST,
+    path: path,
     method: 'GET',
     headers: {
       'client_id': clientId,
@@ -75,11 +95,11 @@ async function leerDispositivo(clientId, clientSecret, token, deviceId) {
     },
   });
 
-  return resultado;
+  return result;
 }
 
+/** Handler principal */
 exports.handler = async function(event) {
-  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -93,8 +113,10 @@ exports.handler = async function(event) {
   }
 
   try {
-    const body = JSON.parse(event.body);
-    const { clientId, clientSecret, deviceIds } = body;
+    var body = JSON.parse(event.body);
+    var clientId = body.clientId;
+    var clientSecret = body.clientSecret;
+    var deviceIds = body.deviceIds;
 
     if (!clientId || !clientSecret || !deviceIds || !deviceIds.length) {
       return {
@@ -105,16 +127,16 @@ exports.handler = async function(event) {
     }
 
     // Obtener token
-    const token = await obtenerToken(clientId, clientSecret);
+    var token = await getToken(clientId, clientSecret);
 
     // Leer cada dispositivo
-    const resultados = {};
-    for (const item of deviceIds) {
+    var resultados = {};
+    for (var i = 0; i < deviceIds.length; i++) {
+      var item = deviceIds[i];
       try {
-        const estado = await leerDispositivo(clientId, clientSecret, token, item.deviceId);
+        var estado = await getDeviceStatus(clientId, clientSecret, token, item.deviceId);
         if (estado.success && estado.result) {
-          // Parsear los Data Points del Peacefair PZIOT-E01
-          const dps = {};
+          var dps = {};
           estado.result.forEach(function(dp) { dps[dp.code] = dp.value; });
 
           resultados[item.casaId] = {
@@ -123,18 +145,19 @@ exports.handler = async function(event) {
             watt: (dps['cur_power'] || 0) / 10,
             voltage: (dps['cur_voltage'] || 0) / 10,
             corriente: (dps['cur_current'] || 0) / 1000,
-            ultimaSync: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+            ultimaSync: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }),
+            raw: dps,
           };
         } else {
           resultados[item.casaId] = {
             online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
-            ultimaSync: 'Error: ' + (estado.msg || 'desconocido'),
+            ultimaSync: 'Error: ' + (estado.msg || 'sin datos'),
           };
         }
-      } catch (deviceError) {
+      } catch(devErr) {
         resultados[item.casaId] = {
           online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
-          ultimaSync: 'Error: ' + deviceError.message,
+          ultimaSync: 'Error: ' + devErr.message.substring(0, 40),
         };
       }
     }
@@ -145,7 +168,7 @@ exports.handler = async function(event) {
       body: JSON.stringify({ success: true, medidores: resultados }),
     };
 
-  } catch (error) {
+  } catch(error) {
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
