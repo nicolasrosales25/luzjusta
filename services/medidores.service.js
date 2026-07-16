@@ -1,52 +1,128 @@
 // =====================================================
 // LuzJusta — Service de Medidores
 // =====================================================
-// Estado en vivo de los medidores Peacefair PZIOT-E01.
-// ETAPA 2: datos demo simulados.
-// ETAPA 5: se conecta a Tuya IoT API.
-// Los medidores se generan dinámicamente según las casas
-// que existan en el estado.
+// Conecta con los Peacefair PZIOT-E01 via Tuya IoT API.
+// Si no hay credenciales configuradas, muestra "Sin medidor".
 // =====================================================
 
-/** Datos demo de los medidores (se usa hasta que haya Tuya) */
-const MEDIDORES_DEMO = {
-  nico:      { online: true,  kwhTotal: 893.15,  watt: 420, voltage: 219, corriente: 1.9, ultimaSync: 'hace 3 min' },
-  muluk:     { online: true,  kwhTotal: 1044.80, watt: 640, voltage: 220, corriente: 2.9, ultimaSync: 'hace 3 min' },
-  raul_tina: { online: true,  kwhTotal: 1247.30, watt: 890, voltage: 221, corriente: 4.0, ultimaSync: 'hace 3 min' },
-};
-
-/** Sincroniza el estado de los medidores.
- *  Genera un medidor demo por cada casa que exista en S.casas.
- *  Etapa 5: acá va la llamada real a Tuya IoT API. */
+/** Sincroniza el estado real de los medidores via Tuya API */
 async function sincronizarMedidores() {
-  // Generar estado para cada casa registrada
-  S.medidores = {};
-  S.casas.forEach(casa => {
-    if (MEDIDORES_DEMO[casa.id]) {
-      S.medidores[casa.id] = { ...MEDIDORES_DEMO[casa.id] };
-    } else {
-      // Casa nueva sin datos demo: mostrar como sin datos
+  const cfg = S.configuracion;
+  const clientId = cfg.tuya_client_id;
+  const clientSecret = cfg.tuya_client_secret;
+  const devices = cfg.tuya_devices || {};
+
+  // Verificar que hay credenciales Tuya configuradas
+  if (!clientId || !clientSecret) {
+    console.log('[Medidores] Sin credenciales Tuya configuradas');
+    // Mostrar todas las casas sin medidor
+    S.medidores = {};
+    S.casas.forEach(function(casa) {
       S.medidores[casa.id] = {
-        online: false, kwhTotal: 0, watt: 0,
-        voltage: 0, corriente: 0, ultimaSync: 'Sin medidor',
+        online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
+        ultimaSync: 'Sin configurar',
       };
+    });
+    return S.medidores;
+  }
+
+  // Armar lista de dispositivos que tienen Device ID
+  const deviceIds = [];
+  S.casas.forEach(function(casa) {
+    if (devices[casa.id]) {
+      deviceIds.push({ casaId: casa.id, deviceId: devices[casa.id] });
     }
   });
-  return S.medidores;
+
+  if (!deviceIds.length) {
+    console.log('[Medidores] Sin Device IDs configurados');
+    S.medidores = {};
+    S.casas.forEach(function(casa) {
+      S.medidores[casa.id] = {
+        online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
+        ultimaSync: 'Sin Device ID',
+      };
+    });
+    return S.medidores;
+  }
+
+  try {
+    console.log('[Medidores] Sincronizando', deviceIds.length, 'medidores...');
+
+    const respuesta = await fetch('/.netlify/functions/tuya-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, clientSecret, deviceIds }),
+    });
+
+    if (!respuesta.ok) {
+      const error = await respuesta.json().catch(function() { return {}; });
+      throw new Error(error.error || 'Error ' + respuesta.status);
+    }
+
+    const data = await respuesta.json();
+
+    if (data.success && data.medidores) {
+      S.medidores = {};
+      S.casas.forEach(function(casa) {
+        if (data.medidores[casa.id]) {
+          S.medidores[casa.id] = data.medidores[casa.id];
+        } else {
+          S.medidores[casa.id] = {
+            online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
+            ultimaSync: devices[casa.id] ? 'Sin respuesta' : 'Sin medidor',
+          };
+        }
+      });
+      console.log('[Medidores] Sincronizados ✓', S.medidores);
+
+      // Guardar lecturas automáticas en Firestore
+      for (const casaId of Object.keys(data.medidores)) {
+        const m = data.medidores[casaId];
+        if (m.online && m.kwhTotal > 0) {
+          await guardarLectura({
+            casa: casaId,
+            fecha: new Date().toISOString().split('T')[0],
+            kwh: m.kwhTotal,
+            watt: m.watt,
+            voltage: m.voltage,
+            fuente: 'tuya_auto',
+          });
+        }
+      }
+
+      return S.medidores;
+    }
+
+    throw new Error(data.error || 'Respuesta inesperada');
+
+  } catch (error) {
+    console.error('[Medidores] Error:', error.message);
+    mostrarNotificacion('⚠ Error sincronizando: ' + error.message);
+
+    S.medidores = {};
+    S.casas.forEach(function(casa) {
+      S.medidores[casa.id] = {
+        online: false, kwhTotal: 0, watt: 0, voltage: 0, corriente: 0,
+        ultimaSync: 'Error: ' + error.message.substring(0, 30),
+      };
+    });
+    return S.medidores;
+  }
 }
 
-/** Devuelve la potencia total actual (suma de casas online) */
+/** Devuelve la potencia total actual */
 function getPotenciaTotal() {
   return Object.values(S.medidores)
-    .filter(m => m.online)
-    .reduce((total, m) => total + (m.watt || 0), 0);
+    .filter(function(m) { return m.online; })
+    .reduce(function(total, m) { return total + (m.watt || 0); }, 0);
 }
 
-/** Cuenta cuántos medidores están online */
+/** Cuenta medidores online */
 function getMedidoresOnline() {
   const valores = Object.values(S.medidores);
   return {
-    online: valores.filter(m => m.online).length,
+    online: valores.filter(function(m) { return m.online; }).length,
     total: valores.length,
   };
 }

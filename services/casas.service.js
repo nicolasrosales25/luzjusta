@@ -1,20 +1,16 @@
 // =====================================================
 // LuzJusta — Service de Casas
 // =====================================================
-// Lee y escribe casas en Firestore.
-// Si Firestore no está listo, usa datos demo.
-// Las casas son documentos con ID fijo (nico, muluk, raul_tina).
-// =====================================================
 
-/** Casas iniciales (se crean en Firestore la primera vez) */
+/** Casas iniciales (se crean solo la primera vez) */
 const CASAS_INICIALES = [
-  { id: 'nico',      nombre: 'Casa Nico',          color: '#2dd4bf', orden: 1 },
-  { id: 'muluk',     nombre: 'Casa Muluk',         color: '#fb923c', orden: 2 },
-  { id: 'raul_tina', nombre: 'Casa Raúl y Tina',   color: '#818cf8', orden: 3 },
+  { id: 'nico',      nombre: 'Casa Nico',        color: '#2dd4bf', orden: 1 },
+  { id: 'muluk',     nombre: 'Casa Muluk',       color: '#fb923c', orden: 2 },
+  { id: 'raul_tina', nombre: 'Casa Raúl y Tina', color: '#818cf8', orden: 3 },
 ];
 
-/** Carga las casas desde Firestore al estado global.
- *  Si la colección está vacía, la inicializa. */
+/** Carga las casas desde Firestore.
+ *  Solo siembra si la colección NO existe (primera vez). */
 async function cargarCasas() {
   const db = getDB();
   if (db) {
@@ -25,19 +21,18 @@ async function cargarCasas() {
         console.log('[Casas] Cargadas desde Firestore:', S.casas.length);
         return S.casas;
       }
-      // Colección vacía: sembrar datos iniciales
+      // Primera vez: crear las casas iniciales
       for (const casa of CASAS_INICIALES) {
         const { id, ...datos } = casa;
         await db.collection('casas').doc(id).set(datos);
       }
       S.casas = [...CASAS_INICIALES];
-      console.log('[Casas] Sembradas en Firestore ✓');
+      console.log('[Casas] Inicializadas en Firestore ✓');
       return S.casas;
     } catch (e) {
-      console.warn('[Casas] Error Firestore, usando demo:', e.message);
+      console.warn('[Casas] Error:', e.message);
     }
   }
-  // Fallback demo
   S.casas = [...CASAS_INICIALES];
   return S.casas;
 }
@@ -47,32 +42,20 @@ async function actualizarNombreCasa(casaId, nuevoNombre) {
   const casa = getCasa(casaId);
   if (!casa) return null;
   casa.nombre = nuevoNombre;
-
   const db = getDB();
   if (db) {
-    try {
-      await db.collection('casas').doc(casaId).update({ nombre: nuevoNombre });
-      console.log('[Casas] Nombre actualizado:', casaId, '→', nuevoNombre);
-    } catch (e) {
-      console.warn('[Casas] Error actualizando nombre:', e.message);
-    }
+    try { await db.collection('casas').doc(casaId).update({ nombre: nuevoNombre }); } catch (e) { console.warn(e.message); }
   }
   return casa;
 }
 
-/** Agrega una casa nueva (para cuando se agregue un medidor) */
+/** Agrega una casa nueva */
 async function agregarCasa(id, nombre, color) {
   const orden = S.casas.length + 1;
   const nueva = { id, nombre, color, orden };
-
   const db = getDB();
   if (db) {
-    try {
-      await db.collection('casas').doc(id).set({ nombre, color, orden });
-      console.log('[Casas] Nueva casa agregada:', nombre);
-    } catch (e) {
-      console.warn('[Casas] Error agregando casa:', e.message);
-    }
+    try { await db.collection('casas').doc(id).set({ nombre, color, orden }); } catch (e) { console.warn(e.message); }
   }
   S.casas.push(nueva);
   return nueva;
@@ -82,12 +65,7 @@ async function agregarCasa(id, nombre, color) {
 async function eliminarCasa(casaId) {
   const db = getDB();
   if (db) {
-    try {
-      await db.collection('casas').doc(casaId).delete();
-      console.log('[Casas] Eliminada:', casaId);
-    } catch (e) {
-      console.warn('[Casas] Error eliminando:', e.message);
-    }
+    try { await db.collection('casas').doc(casaId).delete(); } catch (e) { console.warn(e.message); }
   }
   S.casas = S.casas.filter(c => c.id !== casaId);
 }

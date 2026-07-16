@@ -73,6 +73,18 @@ function cargarValoresConfig() {
   if (userEl && cfg.admin_usuario) userEl.value = cfg.admin_usuario;
   const keyEl = document.getElementById('cfg-anthropic-key');
   if (keyEl && cfg.anthropic_key) keyEl.value = cfg.anthropic_key;
+  // Tuya
+  const tuyaIdEl = document.getElementById('cfg-tuya-id');
+  if (tuyaIdEl && cfg.tuya_client_id) tuyaIdEl.value = cfg.tuya_client_id;
+  const tuyaSecretEl = document.getElementById('cfg-tuya-secret');
+  if (tuyaSecretEl && cfg.tuya_client_secret) tuyaSecretEl.value = cfg.tuya_client_secret;
+  // Device IDs
+  if (cfg.tuya_devices) {
+    S.casas.forEach(function(casa) {
+      const el = document.getElementById('cfg-dev-' + casa.id);
+      if (el && cfg.tuya_devices[casa.id]) el.value = cfg.tuya_devices[casa.id];
+    });
+  }
   // Tarifas
   if (cfg.tarifa) {
     const t = cfg.tarifa;
@@ -350,7 +362,34 @@ async function guardarConfigCasas() {
   mostrarNotificacion('✓ Nombres guardados');
 }
 
-function guardarConfigTuya()    { mostrarNotificacion('✓ Configuración Tuya guardada'); }
+async function guardarConfigTuya() {
+  const clientId = document.getElementById('cfg-tuya-id').value.trim();
+  const clientSecret = document.getElementById('cfg-tuya-secret').value.trim();
+
+  // Recoger Device IDs de cada casa
+  const devices = {};
+  S.casas.forEach(function(casa) {
+    const el = document.getElementById('cfg-dev-' + casa.id);
+    if (el && el.value.trim()) {
+      devices[casa.id] = el.value.trim();
+    }
+  });
+
+  const cambios = {
+    tuya_client_id: clientId,
+    tuya_client_secret: clientSecret,
+    tuya_devices: devices,
+  };
+
+  await guardarConfiguracion({ ...S.configuracion, ...cambios });
+  mostrarNotificacion('✓ Configuración Tuya guardada en Firebase');
+
+  // Intentar sincronizar inmediatamente
+  await sincronizarMedidores();
+  renderMeterCards();
+  renderPaginaMedidores();
+  renderResumen();
+}
 
 async function guardarConfigTarifas() {
   const tarifa = {

@@ -1,12 +1,8 @@
 // =====================================================
 // LuzJusta — Service de Firestore (capa de acceso)
 // =====================================================
-// Funciones genéricas de lectura/escritura.
-// Si Firestore no está listo, los demás services
-// caen automáticamente a datos demo.
-// =====================================================
 
-/** Configuración por defecto (tarifas T1R Coop. Las Flores 05/2026) */
+/** Configuración por defecto */
 const CONFIGURACION_DEFAULT = {
   tarifa: {
     tramo1_hasta: 150,
@@ -22,25 +18,30 @@ const CONFIGURACION_DEFAULT = {
   sync_intervalo_min: 15,
   admin_usuario: 'admin',
   admin_password: 'lasflores123',
+  tuya_client_id: '',
+  tuya_client_secret: '',
+  tuya_devices: {},
+  anthropic_key: '',
 };
 
-/** Carga la configuración general en el estado.
- *  Si no existe en Firestore, la crea con los valores default. */
+/** Carga la configuración desde Firestore.
+ *  Si no existe, la crea con valores default. */
 async function cargarConfiguracion() {
   const db = getDB();
   if (db) {
     try {
       const doc = await db.collection('configuracion').doc('general').get();
       if (doc.exists) {
-        S.configuracion = doc.data();
+        // Mergear con default para que no falten campos nuevos
+        S.configuracion = { ...CONFIGURACION_DEFAULT, ...doc.data() };
         console.log('[Config] Cargada desde Firestore ✓');
         return S.configuracion;
       }
-      // No existe: crear con valores default
+      // No existe: crear con default
       await db.collection('configuracion').doc('general').set(CONFIGURACION_DEFAULT);
-      console.log('[Config] Creada en Firestore con valores default ✓');
+      console.log('[Config] Creada en Firestore ✓');
     } catch (e) {
-      console.warn('[Config] Error Firestore, usando default:', e.message);
+      console.warn('[Config] Error:', e.message);
     }
   }
   S.configuracion = { ...CONFIGURACION_DEFAULT };
@@ -62,7 +63,7 @@ async function guardarConfiguracion(cambios) {
   return S.configuracion;
 }
 
-/** Verifica si Firestore está disponible y conectado */
+/** Verifica si Firestore está disponible */
 function firestoreDisponible() {
   return !!getDB();
 }
