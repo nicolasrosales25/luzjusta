@@ -57,15 +57,54 @@ async function getToken(clientId, clientSecret) {
   return result.result.access_token;
 }
 
-/** Lee los logs recientes del dispositivo (últimos 30 min) */
+/** Lee los logs recientes del dispositivo */
 async function getDeviceLogs(clientId, clientSecret, token, deviceId) {
   var t = Date.now().toString();
   var endTime = Date.now();
-  var startTime = endTime - (30 * 60 * 1000); // 30 minutos atrás
-  var path = '/v1.0/devices/' + deviceId + '/logs?type=7&start_time=' + startTime + '&end_time=' + endTime + '&size=20';
+  var startTime = endTime - (2 * 60 * 60 * 1000); // 2 horas atrás
 
-  var result = await tuyaGet(TUYA_HOST, path, clientId, clientSecret, t, token);
-  return result;
+  // Probar type=2 (DP Report) primero, luego type=7
+  var types = [2, 7];
+  
+  for (var ti = 0; ti < types.length; ti++) {
+    var path = '/v1.0/devices/' + deviceId + '/logs?type=' + types[ti] + '&start_time=' + startTime + '&end_time=' + endTime + '&size=50';
+    var t2 = Date.now().toString();
+    var result = await tuyaGet(TUYA_HOST, path, clientId, clientSecret, t2, token);
+    
+    if (result.success && result.result && result.result.logs && result.result.logs.length > 0) {
+      return result;
+    }
+  }
+
+  // Si ninguno funciona, intentar el endpoint de propiedades v2
+  var t3 = Date.now().toString();
+  var propPath = '/v2.0/cloud/thing/' + deviceId + '/shadow/properties';
+  var propResult = await tuyaGet(TUYA_HOST, propPath, clientId, clientSecret, t3, token);
+  
+  if (propResult.success && propResult.result) {
+    // Convertir formato de propiedades a formato de logs
+    return {
+      success: true,
+      result: { logs: (propResult.result.properties || []).map(function(p) { return { code: p.code, value: String(p.value) }; }) },
+      source: 'shadow'
+    };
+  }
+
+  // Último intento: status con iot-03
+  var t4 = Date.now().toString();
+  var statusPath = '/v1.0/iot-03/devices/' + deviceId + '/status';
+  var statusResult = await tuyaGet(TUYA_HOST, statusPath, clientId, clientSecret, t4, token);
+
+  return {
+    success: false,
+    result: { logs: [] },
+    debug: {
+      type2: 'empty',
+      type7: 'empty',
+      shadow: propResult,
+      status: statusResult
+    }
+  };
 }
 
 /** Parsea los logs del Peacefair a valores útiles */
