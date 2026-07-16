@@ -39,6 +39,15 @@ async function loginInquilino(casaId) {
   S.casaActual = casaId;
   mostrarShell('tenant');
   renderVistaInquilino(casaId);
+
+  // Sync automático cada 2 min para inquilino
+  detenerSyncAutomatico();
+  syncTimer = setInterval(async function() {
+    try {
+      await sincronizarMedidores();
+      renderVistaInquilino(casaId);
+    } catch(e) {}
+  }, SYNC_RAPIDO);
 }
 
 /** Cierra la sesión */
@@ -46,6 +55,7 @@ function cerrarSesion() {
   S.usuario = null;
   S.rol = null;
   S.casaActual = null;
+  detenerSyncAutomatico();
   destruirTodosLosGraficos();
   mostrarShell('login');
 }
@@ -53,6 +63,11 @@ function cerrarSesion() {
 // -----------------------------------------------------
 // PANEL ADMIN
 // -----------------------------------------------------
+
+// Control de sincronización automática
+let syncTimer = null;
+const SYNC_RAPIDO = 2 * 60 * 1000;   // 2 minutos en dashboard/medidores
+const SYNC_LENTO  = 15 * 60 * 1000;  // 15 minutos en otras páginas
 
 /** Inicializa todas las vistas del panel admin */
 async function iniciarPanelAdmin() {
@@ -63,6 +78,78 @@ async function iniciarPanelAdmin() {
   renderFacturas();
   cargarValoresConfig();
   setTimeout(inicializarGraficosDashboard, 100);
+  iniciarSyncAutomatico();
+}
+
+/** Inicia el ciclo de sincronización automática */
+function iniciarSyncAutomatico() {
+  detenerSyncAutomatico();
+  syncTimer = setInterval(syncSilencioso, SYNC_RAPIDO);
+  console.log('[Sync] Auto-sync cada 2 min activado');
+
+  // Pausar sync cuando el tab no está visible
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      detenerSyncAutomatico();
+      console.log('[Sync] Tab oculto — sync pausado');
+    } else if (S.rol === 'admin') {
+      syncTimer = setInterval(syncSilencioso, SYNC_RAPIDO);
+      syncSilencioso(); // sync inmediato al volver
+      console.log('[Sync] Tab visible — sync reanudado');
+    }
+  });
+}
+
+/** Detiene el timer de sincronización */
+function detenerSyncAutomatico() {
+  if (syncTimer) {
+    clearInterval(syncTimer);
+    syncTimer = null;
+  }
+}
+
+/** Cambia de tab en la vista del inquilino */
+function cambiarTabInquilino(tab, btn) {
+  // Desactivar todos
+  document.querySelectorAll('.tenant-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.bottom-nav-item').forEach(function(b) { b.classList.remove('active'); });
+  // Activar seleccionado
+  var tabEl = document.getElementById('tenant-tab-' + tab);
+  if (tabEl) tabEl.classList.add('active');
+  if (btn) btn.classList.add('active');
+  // Renderizar gráfico al entrar a historial
+  if (tab === 'historial' && S.casaActual) {
+    setTimeout(function() { renderGraficoInquilino(S.casaActual); }, 100);
+  }
+}
+
+/** Muestra/oculta el spinner de sync */
+function mostrarSpinnerSync(mostrar) {
+  var adminSpinner = document.getElementById('admin-sync-spinner');
+  var tenantSpinner = document.getElementById('tenant-sync-spinner');
+  var overlay = document.getElementById('sync-overlay');
+  if (adminSpinner) adminSpinner.classList.toggle('visible', mostrar);
+  if (tenantSpinner) tenantSpinner.classList.toggle('visible', mostrar);
+}
+
+/** Sincronización silenciosa con spinner */
+async function syncSilencioso() {
+  mostrarSpinnerSync(true);
+  try {
+    await sincronizarMedidores();
+    renderResumen();
+    renderMeterCards();
+    renderPaginaMedidores();
+    var syncLabel = document.getElementById('admin-sync-label');
+    if (syncLabel) {
+      var hora = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      syncLabel.textContent = 'En línea · ' + hora;
+    }
+  } catch(e) {
+    console.warn('[Sync] Error:', e.message);
+  } finally {
+    mostrarSpinnerSync(false);
+  }
 }
 
 /** Carga los valores actuales de S.configuracion en el formulario de config */
